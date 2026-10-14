@@ -412,4 +412,41 @@ class DumperTest extends TestCase
 
         $this->assertSame(file_get_contents(base_path('test.sql')), gzdecode(file_get_contents(base_path('test-streamed.sql.gz'))));
     }
+
+    #[Test]
+    public function it_dumps_values_with_characters_that_need_escaping_so_they_import_unchanged(): void
+    {
+        $this->loadLaravelMigrations();
+
+        $names = [
+            'quote' => "O'Brien",
+            'backslash' => 'back\\slash',
+            'null byte' => "null\0byte",
+            'empty string' => '',
+        ];
+
+        DB::table('users')->insert([
+            ['name' => $names['quote'], 'email' => 'quote@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => $names['backslash'], 'email' => 'backslash@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => $names['null byte'], 'email' => 'null-byte@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => $names['empty string'], 'email' => 'empty-string@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+        ]);
+
+        $outputFile = base_path('test.sql');
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->include('users');
+
+        $this->artisan('db:masked-dump', [
+            'output' => $outputFile
+        ]);
+
+        DB::table('users')->delete();
+        DB::unprepared(file_get_contents($outputFile));
+
+        $this->assertSame(
+            array_values($names),
+            DB::table('users')->orderBy('id')->pluck('name')->all()
+        );
+    }
 }
