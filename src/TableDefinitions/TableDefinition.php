@@ -16,11 +16,15 @@ class TableDefinition
     protected $query;
     protected $columns = [];
     protected $chunkSize = 0;
+    protected $queryChunkSize = 2000;
 
-    public function __construct(Table $table)
+    protected ?array $primary = null;
+
+    public function __construct(Table $table, ?array $index = null)
     {
         $this->table = $table;
         $this->dumpType = static::DUMP_FULL;
+        $this->primary = $index;
     }
 
     public function fullDump()
@@ -33,6 +37,13 @@ class TableDefinition
     public function outputInChunksOf(int $chunkSize)
     {
         $this->chunkSize = $chunkSize;
+
+        return $this;
+    }
+
+    public function queryInChunksOf(int $chunkSize)
+    {
+        $this->queryChunkSize = $chunkSize;
 
         return $this;
     }
@@ -74,6 +85,11 @@ class TableDefinition
         return $this->chunkSize;
     }
 
+    public function getQueryChunkSize()
+    {
+        return $this->queryChunkSize;
+    }
+
     public function getDoctrineTable()
     {
         return $this->table;
@@ -90,5 +106,20 @@ class TableDefinition
             return;
         }
         call_user_func($this->query, $query);
+    }
+
+    public function getKey(): ?string
+    {
+        $columns = $this->primary['columns'] ?? null;
+
+        if ($columns === null) {
+            return null;
+        }
+
+        if (count($columns) === 1) {
+            return $columns[0];
+        }
+
+        return null;
     }
 }

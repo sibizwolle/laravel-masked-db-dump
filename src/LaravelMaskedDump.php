@@ -5,6 +5,7 @@ namespace BeyondCode\LaravelMaskedDumper;
 use Generator;
 use Illuminate\Console\OutputStyle;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\LazyCollection;
 use Illuminate\Database\Query\Expression;
 use BeyondCode\LaravelMaskedDumper\TableDefinitions\TableDefinition;
 
@@ -60,7 +61,7 @@ class LaravelMaskedDump
 
         $table->modifyQuery($queryBuilder);
 
-        $iterator = $queryBuilder->cursor();
+        $iterator = $this->rowsOf($queryBuilder, $table);
 
         $rows = [];
         foreach ($iterator as $row) {
@@ -86,5 +87,19 @@ class LaravelMaskedDump
         );
 
         return $rawInsert . ';' . PHP_EOL;
+    }
+
+    private function rowsOf(Builder $queryBuilder, TableDefinition $table): LazyCollection
+    {
+        return $this->canPaginateByKey($table, $queryBuilder)
+            ? $queryBuilder->lazyById(chunkSize: $table->getQueryChunkSize(), column: $table->getKey())
+            : $queryBuilder->cursor();
+    }
+
+    private function canPaginateByKey(TableDefinition $table, Builder $queryBuilder): bool
+    {
+        return $table->getKey() !== null
+            && $queryBuilder->getLimit() === null
+            && empty($queryBuilder->orders);
     }
 }

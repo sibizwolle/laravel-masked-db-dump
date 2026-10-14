@@ -158,7 +158,9 @@ class DumpSchema
 
         if ($this->loadAllTables) {
             $dumpTables = collect($this->availableTables)->mapWithKeys(function (Table $table) {
-                return [$table->getName() => new TableDefinition($table)];
+                $primary = collect($this->getBuilder()->getIndexes($table->getName()))->first(fn ($index) => $index['primary']);
+
+                return [$table->getName() => new TableDefinition($table, $primary)];
             });
 
             $excluded = $this->excludedTables;
@@ -169,7 +171,9 @@ class DumpSchema
         }
 
         foreach ($this->customizedTables as $tableName => $tableDefinition) {
-            $table = new TableDefinition($this->getTable($tableName));
+            $primary = collect($this->getBuilder()->getIndexes($tableName))->first(fn ($index) => $index['primary']);
+
+            $table = new TableDefinition($this->getTable($tableName), $primary);
             call_user_func_array($tableDefinition, [$table, Factory::create()]);
 
             $this->dumpTables[$tableName] = $table;

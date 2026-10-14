@@ -9,6 +9,9 @@ use BeyondCode\LaravelMaskedDumper\LaravelMaskedDumpServiceProvider;
 use BeyondCode\LaravelMaskedDumper\TableDefinitions\TableDefinition;
 use Faker\Generator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Schema\Blueprint;
 use Orchestra\Testbench\TestCase;
 use Spatie\Snapshots\MatchesSnapshots;
 
@@ -447,6 +450,193 @@ class DumperTest extends TestCase
         $this->assertSame(
             array_values($names),
             DB::table('users')->orderBy('id')->pluck('name')->all()
+        );
+    }
+
+    #[Test]
+    public function it_dumps_no_rows_of_a_table_whose_query_is_limited_to_zero_rows(): void
+    {
+        $this->loadLaravelMigrations();
+
+        DB::table('users')->insert([
+            ['name' => 'Marcel1', 'email' => 'marcel1@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel2', 'email' => 'marcel2@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+        ]);
+
+        $outputFile = base_path('test.sql');
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->include('users')
+            ->table('users', function (TableDefinition $table) {
+                $table->query(fn (Builder $query) => $query->limit(0));
+            });
+
+        $this->artisan('db:masked-dump', [
+            'output' => $outputFile
+        ]);
+
+        $this->assertStringNotContainsString('marcel1@beyondco.de', file_get_contents($outputFile));
+        $this->assertStringNotContainsString('marcel2@beyondco.de', file_get_contents($outputFile));
+    }
+
+    #[Test]
+    public function it_dumps_only_the_limited_number_of_rows_when_the_table_is_read_in_chunks_smaller_than_the_limit(): void
+    {
+        $this->loadLaravelMigrations();
+
+        DB::table('users')->insert([
+            ['name' => 'Marcel1', 'email' => 'marcel1@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel2', 'email' => 'marcel2@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel3', 'email' => 'marcel3@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+        ]);
+
+        $outputFile = base_path('test.sql');
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->include('users')
+            ->table('users', function (TableDefinition $table) {
+                $table->queryInChunksOf(1)
+                    ->query(fn (Builder $query) => $query->limit(2));
+            });
+
+        $this->artisan('db:masked-dump', [
+            'output' => $outputFile
+        ]);
+
+        $dump = file_get_contents($outputFile);
+
+        $this->assertStringContainsString('marcel1@beyondco.de', $dump);
+        $this->assertStringContainsString('marcel2@beyondco.de', $dump);
+        $this->assertStringNotContainsString('marcel3@beyondco.de', $dump);
+    }
+
+    #[Test]
+    public function it_skips_the_offset_rows_when_the_table_is_read_in_chunks_smaller_than_the_offset(): void
+    {
+        $this->loadLaravelMigrations();
+
+        DB::table('users')->insert([
+            ['name' => 'Marcel1', 'email' => 'marcel1@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel2', 'email' => 'marcel2@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel3', 'email' => 'marcel3@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+        ]);
+
+        $outputFile = base_path('test.sql');
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->include('users')
+            ->table('users', function (TableDefinition $table) {
+                $table->queryInChunksOf(1)
+                    ->query(fn (Builder $query) => $query->offset(1)->limit(10));
+            });
+
+        $this->artisan('db:masked-dump', [
+            'output' => $outputFile
+        ]);
+
+        $dump = file_get_contents($outputFile);
+
+        $this->assertStringNotContainsString('marcel1@beyondco.de', $dump);
+        $this->assertStringContainsString('marcel2@beyondco.de', $dump);
+        $this->assertStringContainsString('marcel3@beyondco.de', $dump);
+    }
+
+    #[Test]
+    public function it_dumps_every_row_once_when_the_query_orders_by_another_column_than_the_key(): void
+    {
+        $this->loadLaravelMigrations();
+
+        // The names sort in the reverse order of the ids, so an order by name conflicts with paginating by id.
+        DB::table('users')->insert([
+            ['name' => 'Marcel3', 'email' => 'marcel3@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel2', 'email' => 'marcel2@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel1', 'email' => 'marcel1@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+        ]);
+
+        $outputFile = base_path('test.sql');
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->include('users')
+            ->table('users', function (TableDefinition $table) {
+                $table->queryInChunksOf(1)
+                    ->query(fn (Builder $query) => $query->orderBy('name'));
+            });
+
+        $this->artisan('db:masked-dump', [
+            'output' => $outputFile
+        ]);
+
+        $dump = file_get_contents($outputFile);
+
+        $this->assertSame(1, substr_count($dump, 'marcel1@beyondco.de'));
+        $this->assertSame(1, substr_count($dump, 'marcel2@beyondco.de'));
+        $this->assertSame(1, substr_count($dump, 'marcel3@beyondco.de'));
+    }
+
+    #[Test]
+    public function it_dumps_every_matching_row_once_when_the_query_filters_and_the_table_is_read_in_chunks(): void
+    {
+        $this->loadLaravelMigrations();
+
+        DB::table('users')->insert([
+            ['name' => 'Marcel1', 'email' => 'marcel1@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel2', 'email' => 'marcel2@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel3', 'email' => 'marcel3@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+        ]);
+
+        $outputFile = base_path('test.sql');
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->include('users')
+            ->table('users', function (TableDefinition $table) {
+                $table->queryInChunksOf(1)
+                    ->query(fn (Builder $query) => $query->where('name', '!=', 'Marcel2'));
+            });
+
+        $this->artisan('db:masked-dump', [
+            'output' => $outputFile
+        ]);
+
+        $dump = file_get_contents($outputFile);
+
+        $this->assertSame(1, substr_count($dump, 'marcel1@beyondco.de'));
+        $this->assertSame(0, substr_count($dump, 'marcel2@beyondco.de'));
+        $this->assertSame(1, substr_count($dump, 'marcel3@beyondco.de'));
+    }
+
+    #[Test]
+    public function it_dumps_every_row_once_of_a_table_with_a_composite_primary_key_read_in_chunks(): void
+    {
+        Schema::create('role_user', function (Blueprint $table) {
+            $table->unsignedInteger('role_id');
+            $table->unsignedInteger('user_id');
+            $table->primary(['role_id', 'user_id']);
+        });
+
+        DB::table('role_user')->insert([
+            ['role_id' => 1, 'user_id' => 1],
+            ['role_id' => 1, 'user_id' => 2],
+            ['role_id' => 2, 'user_id' => 1],
+        ]);
+
+        $outputFile = base_path('test.sql');
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->include('role_user')
+            ->table('role_user', function (TableDefinition $table) {
+                $table->queryInChunksOf(1);
+            });
+
+        $this->artisan('db:masked-dump', [
+            'output' => $outputFile
+        ]);
+
+        DB::table('role_user')->delete();
+        DB::unprepared(file_get_contents($outputFile));
+
+        $this->assertSame(
+            [['role_id' => 1, 'user_id' => 1], ['role_id' => 1, 'user_id' => 2], ['role_id' => 2, 'user_id' => 1]],
+            DB::table('role_user')->orderBy('role_id')->orderBy('user_id')->get()->map(fn ($row) => (array) $row)->all()
         );
     }
 }
