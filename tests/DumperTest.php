@@ -361,4 +361,55 @@ class DumperTest extends TestCase
             '--schema' => 'my_schema',
         ]);
     }
+
+    #[Test]
+    public function it_writes_the_same_dump_when_streaming_to_the_output_file(): void
+    {
+        $this->loadLaravelMigrations();
+
+        DB::table('users')->insert([
+            ['name' => 'Marcel1', 'email' => 'marcel1@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel2', 'email' => 'marcel2@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+        ]);
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->allTables();
+
+        $this->artisan('db:masked-dump', [
+            'output' => base_path('test.sql'),
+        ]);
+
+        $this->artisan('db:masked-dump', [
+            'output' => base_path('test-streamed.sql'),
+            '--stream' => true,
+        ]);
+
+        $this->assertSame(file_get_contents(base_path('test.sql')), file_get_contents(base_path('test-streamed.sql')));
+    }
+
+    #[Test]
+    public function it_writes_the_same_dump_when_streaming_to_a_gzipped_output_file(): void
+    {
+        $this->loadLaravelMigrations();
+
+        DB::table('users')->insert([
+            ['name' => 'Marcel1', 'email' => 'marcel1@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+            ['name' => 'Marcel2', 'email' => 'marcel2@beyondco.de', 'password' => 'test', 'created_at' => '2021-01-01 00:00:00', 'updated_at' => '2021-01-01 00:00:00'],
+        ]);
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->allTables();
+
+        $this->artisan('db:masked-dump', [
+            'output' => base_path('test.sql'),
+        ]);
+
+        $this->artisan('db:masked-dump', [
+            'output' => base_path('test-streamed.sql.gz'),
+            '--stream' => true,
+            '--gzip' => true,
+        ]);
+
+        $this->assertSame(file_get_contents(base_path('test.sql')), gzdecode(file_get_contents(base_path('test-streamed.sql.gz'))));
+    }
 }

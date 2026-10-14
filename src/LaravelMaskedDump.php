@@ -2,6 +2,7 @@
 
 namespace BeyondCode\LaravelMaskedDumper;
 
+use Generator;
 use Illuminate\Console\OutputStyle;
 use BeyondCode\LaravelMaskedDumper\TableDefinitions\TableDefinition;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
@@ -36,23 +37,24 @@ class LaravelMaskedDump
         }
     }
 
-    public function dump()
+    public function dump(): string
+    {
+        return implode('', iterator_to_array($this->generate()));
+    }
+
+    public function generate(): Generator
     {
         $tables = $this->definition->getDumpTables();
 
-        $query = '';
-
         $overallTableProgress = $this->output->createProgressBar(count($tables));
 
-        foreach ($tables as $tableName => $table) {
+        foreach ($tables as $table) {
             if ($table->shouldDumpData()) {
-                $query .= $this->dumpTableData($table);
+                yield $this->dumpTableData($table);
             }
 
             $overallTableProgress->advance();
         }
-
-        return $query;
     }
 
     protected function transformResultForInsert($row, TableDefinition $table)

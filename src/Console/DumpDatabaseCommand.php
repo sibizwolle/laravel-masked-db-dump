@@ -2,12 +2,13 @@
 
 namespace BeyondCode\LaravelMaskedDumper\Console;
 
+use Generator;
 use Illuminate\Console\Command;
 use BeyondCode\LaravelMaskedDumper\LaravelMaskedDump;
 
 class DumpDatabaseCommand extends Command
 {
-    protected $signature = 'db:masked-dump {output} {--definition=default} {--gzip} {--schema=}';
+    protected $signature = 'db:masked-dump {output} {--definition=default} {--gzip} {--schema=} {--stream}';
 
     protected $description = 'Create a new database dump';
 
@@ -20,6 +21,14 @@ class DumpDatabaseCommand extends Command
         $this->info('Starting Database dump');
 
         $dumper = new LaravelMaskedDump($definition, $this->output);
+
+        if ($this->option('stream')) {
+            $dump = $dumper->generate();
+            $this->streamOutput($dump);
+
+            return;
+        }
+
         $dump = $dumper->dump();
 
         $this->output->writeln('');
@@ -38,5 +47,21 @@ class DumpDatabaseCommand extends Command
             file_put_contents($this->argument('output'), $dump);
             $this->info('Wrote database dump to ' . $this->argument('output'));
         }
+    }
+
+    private function streamOutput(Generator $dump)
+    {
+        $output = $this->argument('output');
+        if ($this->option('gzip')) {
+            $output = "compress.zlib://$output";
+        }
+
+        $stream = fopen($output, 'w');
+
+        foreach ($dump as $chunk) {
+            fwrite($stream, $chunk);
+        }
+
+        fclose($stream);
     }
 }
