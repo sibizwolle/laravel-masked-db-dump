@@ -639,4 +639,35 @@ class DumperTest extends TestCase
             DB::table('role_user')->orderBy('role_id')->orderBy('user_id')->get()->map(fn ($row) => (array) $row)->all()
         );
     }
+
+    #[Test]
+    public function it_replaces_the_value_of_a_redacted_column_with_a_redacted_marker(): void
+    {
+        $this->loadLaravelMigrations();
+
+        DB::table('users')->insert([
+            'name' => 'Marcel',
+            'email' => 'marcel@beyondco.de',
+            'password' => 'test',
+            'created_at' => '2021-01-01 00:00:00',
+            'updated_at' => '2021-01-01 00:00:00',
+        ]);
+
+        $outputFile = base_path('test.sql');
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->include('users')
+            ->table('users', function (TableDefinition $table) {
+                $table->redact('name');
+            });
+
+        $this->artisan('db:masked-dump', [
+            'output' => $outputFile
+        ]);
+
+        DB::table('users')->delete();
+        DB::unprepared(file_get_contents($outputFile));
+
+        $this->assertSame('[redacted]', DB::table('users')->value('name'));
+    }
 }

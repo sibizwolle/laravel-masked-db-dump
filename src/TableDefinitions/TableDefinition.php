@@ -67,6 +67,13 @@ class TableDefinition
         return $this;
     }
 
+    public function redact(string $column)
+    {
+        $this->columns[$column] = ColumnDefinition::replace($column, '[redacted]');
+
+        return $this;
+    }
+
     /**
      * @param string $column
      * @return Column|null
