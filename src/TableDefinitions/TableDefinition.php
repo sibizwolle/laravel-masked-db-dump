@@ -21,11 +21,14 @@ class TableDefinition
 
     protected ?array $primary = null;
 
-    public function __construct(Table $table, ?array $index = null)
+    protected array $generatedColumns = [];
+
+    public function __construct(Table $table, ?array $index = null, array $generatedColumns = [])
     {
         $this->table = $table;
         $this->dumpType = static::DUMP_FULL;
         $this->primary = $index;
+        $this->generatedColumns = $generatedColumns;
     }
 
     public function fullDump()
@@ -113,6 +116,17 @@ class TableDefinition
     public function getQueryChunkSize()
     {
         return $this->queryChunkSize;
+    }
+
+    /**
+     * The virtual and stored generated columns of the table. The database computes
+     * their values on import, so they are left out of the insert statements.
+     *
+     * @return string[]
+     */
+    public function getGeneratedColumns(): array
+    {
+        return $this->generatedColumns;
     }
 
     public function getDoctrineTable()

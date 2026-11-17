@@ -15,6 +15,7 @@ class DumpSchema
     protected $connectionName;
     protected $availableTables = [];
     protected $dumpTables = [];
+    protected $generatedColumns = [];
 
     protected $loadAllTables = false;
     protected $customizedTables = [];
@@ -138,6 +139,11 @@ class DumpSchema
             $columns = $this->getBuilder()->getColumns($table['name']);
 
             $doctrineTable = new Table($table['name']);
+            $this->generatedColumns[$table['name']] = collect($columns)
+                ->filter(fn ($column) => ($column['generation'] ?? null) !== null)
+                ->pluck('name')
+                ->all();
+
             foreach ($columns as $column) {
 
                 $doctrineTable->addColumn(
@@ -160,7 +166,7 @@ class DumpSchema
             $dumpTables = collect($this->availableTables)->mapWithKeys(function (Table $table) {
                 $primary = collect($this->getBuilder()->getIndexes($table->getName()))->first(fn ($index) => $index['primary']);
 
-                return [$table->getName() => new TableDefinition($table, $primary)];
+                return [$table->getName() => new TableDefinition($table, $primary, $this->generatedColumns[$table->getName()] ?? [])];
             });
 
             $excluded = $this->excludedTables;
@@ -173,7 +179,7 @@ class DumpSchema
         foreach ($this->customizedTables as $tableName => $tableDefinition) {
             $primary = collect($this->getBuilder()->getIndexes($tableName))->first(fn ($index) => $index['primary']);
 
-            $table = new TableDefinition($this->getTable($tableName), $primary);
+            $table = new TableDefinition($this->getTable($tableName), $primary, $this->generatedColumns[$tableName] ?? []);
             call_user_func_array($tableDefinition, [$table, Factory::create()]);
 
             $this->dumpTables[$tableName] = $table;

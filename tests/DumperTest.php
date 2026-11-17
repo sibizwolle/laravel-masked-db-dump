@@ -704,4 +704,64 @@ class DumperTest extends TestCase
 
         $this->assertSame('[redacted]', DB::table('users')->value('name'));
     }
+
+    #[Test]
+    public function it_leaves_generated_columns_out_of_the_insert_statements()
+    {
+        $this->createTableWithGeneratedColumns();
+
+        DB::table('people')->insert(['first_name' => 'Marcel', 'last_name' => 'Pociot']);
+
+        $outputFile = base_path('test.sql');
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()->allTables();
+
+        $this->artisan('db:masked-dump', [
+            'output' => $outputFile
+        ]);
+
+        $dump = file_get_contents($outputFile);
+
+        $this->assertStringContainsString('"first_name"', $dump);
+        $this->assertStringContainsString('"last_name"', $dump);
+        $this->assertStringNotContainsString('"full_name"', $dump);
+        $this->assertStringNotContainsString('"initials"', $dump);
+        $this->assertMatchesTextSnapshot($dump);
+    }
+
+    #[Test]
+    public function it_leaves_generated_columns_out_of_the_insert_statements_of_a_table_with_its_own_query()
+    {
+        $this->createTableWithGeneratedColumns();
+
+        DB::table('people')->insert(['first_name' => 'Marcel', 'last_name' => 'Pociot']);
+        DB::table('people')->insert(['first_name' => 'Beyond', 'last_name' => 'Code']);
+
+        $outputFile = base_path('test.sql');
+
+        $this->app['config']['masked-dump.default'] = DumpSchema::define()
+            ->allTables()
+            ->table('people', function ($table) {
+                $table->query(function ($query) {
+                    $query->select('id', 'first_name', 'full_name')->where('first_name', 'Marcel');
+                });
+            });
+
+        $this->artisan('db:masked-dump', [
+            'output' => $outputFile
+        ]);
+
+        $this->assertMatchesTextSnapshot(file_get_contents($outputFile));
+    }
+
+    private function createTableWithGeneratedColumns(): void
+    {
+        Schema::create('people', function (Blueprint $table) {
+            $table->id();
+            $table->string('first_name');
+            $table->string('last_name');
+            $table->string('full_name')->virtualAs("first_name || ' ' || last_name");
+            $table->string('initials')->storedAs('substr(first_name, 1, 1) || substr(last_name, 1, 1)');
+        });
+    }
 }

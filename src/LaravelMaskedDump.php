@@ -45,7 +45,7 @@ class LaravelMaskedDump
 
     protected function transformResultForInsert($row, TableDefinition $table, Builder $query): array
     {
-        return collect($row)->map(function ($value, $column) use ($table, $query) {
+        return collect($row)->except($table->getGeneratedColumns())->map(function ($value, $column) use ($table, $query) {
             if ($columnDefinition = $table->findColumn($column)) {
                 $value = $columnDefinition->modifyValue($value);
             }
